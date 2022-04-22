@@ -1,84 +1,149 @@
-//////////////////............How does this work?.............//////////////////////
-// You as the GM have to check the itemName is correct in this macro. (see main function)
-// The player clicks the macro and on first run it will only give the button refresh
-// this will set the dice for the first time. CLicking the macro again will allow the
-// player to use the dice set by the macro. It is then upto the DM and player on how
-// to interpret this number. Since there are too many use cases to capture at once.
+
+//0) Module Requirements "Advanced Macros", "MIDI-QOL"
+//1) Don't let your friend convince you of having a DOTA inspired Ursa Warrior character
+//2) After friends begs for so long, make sure you create the class feature "Ursa Warrior" (just create the feature use the +add button)
+//3) Make sure to add the "Fury Swipes" Feature to the char as well (just create the feature use the +add button, assign it simple salshing 1d8 damage)
+//4) Add this Macro to the "FurySwipesMacro" as script in your HotBar
+//5) Edit Fury Swipes feature->Details, scroll down to the part "On Use Macro" and input FurySwipesMacro -> Before damage roll
+//6) ..enjoy!
+//***It only overwrites the mwadmg (melee weapon damage?) to the new stack calculated value
+//Does not wait 4 turns to reset  stacks, as soon as the UrsaWarrior changes target and uses "Fury Swipes" the stack disappears
+//***There are macros out there that save the previous mwadmg and handle that. This one does not do that (yet).
+//***If you modify it with that functionality (case an Ursa Warrior can have other sources of mwadmg, which from my POV is super OverPowered), please let me know so I can take a look at your approach
 //
-// Gallery: https://imgur.com/a/PYpMbUy
-//
-// Required: FoundryVTT v0.75+, DND5e v 1.2+
-// works in  FoundryVTT v0.8.6, DND5e v 1.3.4
+//6) Learning mode, uncommment the //console.log lines
+//7) Learning mode, in your browser console, hit F12, if your console suppor filters, filter by "FurySwipesMacro"
+//The unlinked token Id gets stored in the Actor as a keyValue Flag called ursaVictim
+//If the new Targer tokenId is diferent than the previous, stack counter gets re-set to 0
 
-const itemName = "Portent"                                                    
-// set this string to what the Portent feature item is called in your game.
-const wizardActor = game.user.character || canvas.tokens.controlled[0].actor; 
-//second option is for the GM.
-const portentItem = wizardActor.items.find(i => i.data.name.includes(itemName)); 
-// finds that item name.
 
-if(!portentItem) return ui.notifications.warn("Your actor does not have the Portent feature");
 
-let myButtons = await generateButtons(wizardActor, portentItem, itemName); // creates the buttons, see function below.  
+//Should be only used with the Claw attack of an Ursa Warrior
+const ursaName    = "Ursa Warrior";
+const attackName  = "Fury Swipes";
+  
+//Either the player or the GM
+const ursaActor= game.user.character || canvas.tokens.controlled[0].actor;
 
-new Dialog({
-    title: "Divination wizard's Portent",
-    content: "Make a choice",
-    buttons: myButtons,
-}).render(true);
+//Try to get if that the Ursa Warrior has the Fury Swipes
+const ursaNameItem    = ursaActor.items.find(i => i.data.name.includes(ursaName)); 
+const attackNameItem  = ursaActor.items.find(i => i.data.name.includes(attackName)); 
 
-async function generateButtons(macroActor, item, itemName){
-    let portentRolled = await macroActor.getFlag("world","portent"); 
-        // does the character already have a set of buttons
-    let diceNumber = macroActor.items.getName("Wizard").data.data.levels < 14 ? 2 : 3; 
-        //sets up for Greater Portent where the player gets 3 dice at level 14.
-    let myButtons = {};
-    if (portentRolled !== undefined){
-        myButtons = portentRolled.reduce((buttons, roll) => {
-            let msgContent = `I forsaw this event and choose to roll: <b>${roll}</b>`;
-            buttons[roll] = {
-                label: `Roll: ${roll}`,
-                callback: async () => {
-                    ChatMessage.create({content:`<div class="dnd5e chat-card">
-                                                    <header class="card-header flexrow">
-                                                        <img src="${item.data.img}" title="${item.data.name}" width="36" height="36" />
-                                                        <h3 class="item-name">${item.data.name}:</h3>
-                                                    </header></div>` + msgContent, speaker:{alias: macroActor.name}});
-                    portentRolled.splice(portentRolled.indexOf(roll), 1); 
-                        // removes the used value from the array.
-                    await macroActor.setFlag("world", "portent", portentRolled); 
-                        // sets the new array as the flag value
-                    await item.update({name: `${itemName} [${portentRolled}]`});  
-                        // updates the item name to contain the new array.
-                }
-            };
-            return buttons;
-        }, {});
+//DEBUG
+//Make sure we are ready, "Ursa Warrior" Class, "Fury Swipes" Ability
+//Use ui.notifications.warn toast and //console.log, learn, learn
+if ( typeof ursaNameItem === 'undefined' ){
+    ui.notifications.warn(this.name + ": You are not a Ursa Warrior ");
+    if(typeof attackNameItem === 'undefined' ){
+        return ui.notifications.warn(this.name + ": ...AND You do not have Fury Swipes ");
     }
-    myButtons.reset = {
-        label: "Refresh, new day",
-        callback: async () => {
-            let portentRolls = [];
-            let msgContent = "";
-            let i = 1; // roll counter
-            let myRoll = await new Roll(`${diceNumber}d20`).evaluate({async: true}); // rolling the new dice
-            for(let result of myRoll.terms[0].results){
-                portentRolls.push(result.result); 
-                    // adding the result to the array.
-                msgContent += `Roll ${i} - <b>${result.result}</b></br>`; 
-                    // preps part of the chat message content
-                i++;
-            }
-            await macroActor.setFlag("world", "portent", portentRolls); 
-                // sets a fresh array of 2 or 3 d20s 
-            await item.update({name: `${itemName} [${portentRolls}]`})
-            ChatMessage.create({content: `<div class="dnd5e chat-card">
+} else {
+    //console.log("FurySwipesMacro : ursaNameItem.name   value: " + ursaNameItem.name   );
+    //console.log("FurySwipesMacro : attackNameItem.name value: " + attackNameItem.name );
+}
+
+let ursaTarget  = Array.from(game.user.targets)[0];
+ursaTarget = ursaTarget.actor;
+let ursaTargetId = ursaTarget.id;
+//console.log(this.name + ": The target token Actor's name is " + ursaTarget.name)
+
+let targetTokenId  = Array.from(game.user.targets)[0].id;
+let targetToken    = canvas.scene.data.tokens.find(targetToken => targetToken.id == targetTokenId);
+let targetTokenName= targetToken.name;
+
+//console.log("FurySwipesMacro : The token target name  is        " + targetTokenName)
+//console.log("FurySwipesMacro : The token target id    is        " + targetTokenId)
+
+
+if ( typeof targetToken === 'undefined' ){
+    return ui.notifications.warn(this.name + ": aaaghhh.. you do not have a target! " );
+} else {
+    //console.log("FurySwipesMacro : furySwipes victim is    : " + targetToken.name);
+}
+
+let furySwipes = await clawsOnVictim(ursaActor, ursaTarget, attackNameItem, targetTokenId, targetTokenName);
+
+async function clawsOnVictim(ursaActor, ursaTarget, attackNameItem, targetTokenId, targetTokenName){
+    let counter = 0;
+    
+    //Ursa Warrior know who whas the last Target
+    let ursaVictimId= await ursaActor.getFlag("world","ursaVictimId");
+    counter         = await ursaTarget.getFlag("world","ursaSwipesCounter");
+    
+    //If our new Target does not have a ursaSwipesCounter, it should be created and set to 0
+    if (isNaN(counter)){
+        await ursaTarget.setFlag("world","ursaSwipesCounter",0);
+        counter = await ursaTarget.getFlag("world","ursaSwipesCounter");
+    }
+  
+    
+    let obj = {};
+    
+    if(ursaVictimId !== undefined){
+        //console.log("FurySwipesMacro :: We already have a Victim, its Id is : " + ursaVictimId);
+
+        if(ursaVictimId != targetTokenId){
+            //console.log("FurySwipesMacro : We have a previous diferent Victim Id   " + ursaVictimId);
+            //console.log("FurySwipesMacro : New Victim's token Id is                " + targetTokenId);
+
+            //console.log("FurySwipesMacro : Re-setting Victim name to :" + ursaTarget.name);
+            //console.log("FurySwipesMacro : Re-setting Victim Id   to :" + targetTokenId);
+            
+            await ursaActor.setFlag("world","ursaVictimId",targetTokenId);
+
+            //console.log("FurySwipesMacro : Re-setting SwipesCounter value to 1 ");
+            await ursaTarget.setFlag("world","ursaSwipesCounter",1);
+            
+            counter = 0;
+            
+            obj['data.bonuses.mwak.damage'] = `${counter}d8`;
+            await ursaActor.update(obj);
+            
+            let newMDmg = ursaActor.data.data.bonuses.mwak.damage;
+            //console.log("FurySwipesMacro : Re-setted melee weapon attack bonus damage is : " + newMDmg);        
+
+        }else{
+            
+            //Finally something interesting. Same ursaVictim, now we get to FurySwipe the poor Victim
+            //console.log("FurySwipesMacro :  Old victim Id : " + ursaVictimId + " is the same as Id " + targetTokenId);
+
+            //Announce your brutal prowess to the world
+            let msgContent =`My claws have sunk <b>${counter}</b> many extra times on this <b>${targetTokenName}</b> prey`
+            ChatMessage.create({content:`<div class="dnd5e chat-card">
                                             <header class="card-header flexrow">
-                                            <img src="${item.data.img}" title="${item.data.name}" width="36" height="36" />
-                                            <h3 class="item-name">${item.data.name}:</h3>
-                                        </header></div>
-                                            My portent forsees the following outcomes:</br>` + msgContent, speaker:{alias: macroActor.name}});
+                                                <img src="${attackNameItem.data.img}" title="${attackNameItem.data.name}" width="36" height="36" />
+                                                <h3 class="item-name">${attackNameItem.data.name}:</h3>
+                                            </header></div>` + msgContent, speaker:{alias: ursaActor.name}});
+                                            
+            let oldMDmg = ursaActor.data.data.bonuses.mwak.damage;
+            //console.log("FurySwipesMacro : Old melee weapon attack bonus damage is : " + oldMDmg);        
+
+            //console.log("FurySwipesMacro : Currently the Fury Swipes bonus damage is " + counter + "d8" );
+            
+            obj['data.bonuses.mwak.damage'] = `${counter}d8`;
+            await ursaActor.update(obj);
+
+            let newMDmg = ursaActor.data.data.bonuses.mwak.damage;
+            //console.log("FurySwipesMacro : New melee weapon attack bonus damage is : " + newMDmg);   
+            
+            //console.log("FurySwipesMacro :  Increasing SwipesCounter +1 ");
+            counter++;
+            await ursaTarget.setFlag("world","ursaSwipesCounter",counter);
+            //console.log("FurySwipesMacro :  Now SwipesCounter value is " + await ursaTarget.getFlag("world","ursaSwipesCounter"));            
+            
         }
-    };
-    return myButtons;
+
+    }else{
+        
+        //This part gets called if no ursaVictim nor ursaSwipesCounter exist in the Actor DB
+        //This means is the first time EVER the macro is being called for the ursaActor.
+        
+        //console.log("FurySwipesMacro : : ursaVictimId data : is undefined and should be initialized" );
+        //console.log("FurySwipesMacro : : attempting to initialize the Victim and SwipesCounter flags");
+        await ursaActor.setFlag("world","ursaVictimId",ursaTargetId);
+        await ursaTarget.setFlag("world","ursaSwipesCounter",1)
+        
+    }
+    
+    return counter;
 }
